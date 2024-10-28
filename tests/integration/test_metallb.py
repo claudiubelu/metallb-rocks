@@ -16,6 +16,28 @@ def _get_rock_image(name: str, version: str):
     return rock.image
 
 
+def _get_logs(
+    instance: harness.Instance,
+    resource_type: str,
+    resource: str,
+    namespace=constants.K8S_NS_KUBE_SYSTEM,
+):
+    process = instance.exec(
+        [
+            "k8s",
+            "kubectl",
+            "logs",
+            "-n",
+            namespace,
+            f"{resource_type}/{resource}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return process.stdout
+
+
 def test_metallb_0_14_5(function_instance: harness.Instance):
     images = [
         HelmImage(
@@ -55,3 +77,10 @@ def test_metallb_0_14_5(function_instance: harness.Instance):
     k8s_util.wait_for_deployment(
         function_instance, "metallb-controller", constants.K8S_NS_KUBE_SYSTEM
     )
+
+    # Sanity check: make sure there isn't an error in Pebble that it couldn't start the service.
+    logs = _get_logs(function_instance, constants.K8S_DEPLOYMENT, "metallb-controller")
+    assert '(Start service "controller") failed' not in logs
+
+    logs = _get_logs(function_instance, constants.K8S_DAEMONSET, "metallb-speaker")
+    assert '(Start service "controller") failed' not in logs
